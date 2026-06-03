@@ -1,16 +1,16 @@
-name: EngiShield CI/CD — Deploy VPS
+name: EngiShield CI/CD — Deploy Hostinger Cloud
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   workflow_dispatch:
 
 env:
   NODE_VERSION: '20'
 
 jobs:
-  validate:
-    name: Validate
+  build-and-deploy:
+    name: Build e Deploy
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,35 +20,26 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
-          cache-dependency-path: package-lock.json
 
-      - name: Install backend dependencies
+      - name: Instalar dependencias do backend
         run: npm ci
 
-      - name: Generate Prisma client
+      - name: Gerar Prisma Client
         run: npx prisma generate
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
-      - name: Install frontend dependencies
+      - name: Instalar dependencias do frontend
         working-directory: ./frontend
         run: npm ci
 
-      - name: Build frontend
+      - name: Build do frontend (exportacao estatica)
         working-directory: ./frontend
         run: npm run build
         env:
           NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
 
-  deploy:
-    name: Deploy to VPS
-    runs-on: ubuntu-latest
-    needs: validate
-    environment: production
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Deploy via SSH
+      - name: Deploy via SSH para Hostinger
         uses: appleboy/ssh-action@v1.0.3
         with:
           host:     ${{ secrets.VPS_HOST }}
@@ -56,21 +47,21 @@ jobs:
           key:      ${{ secrets.VPS_SSH_KEY }}
           script: |
             set -e
-            cd /opt/engishield
+            cd ~/htdocs/lightgoldenrodyellow-mink-532860.hostingersite.com
 
-            git fetch origin main
-            git reset --hard origin/main
+            git fetch origin master
+            git reset --hard origin/master
 
             npm ci --omit=dev
-            npx prisma migrate deploy
             npx prisma generate
+            npx prisma migrate deploy
 
             cd frontend
             npm ci
             npm run build
             cd ..
 
-            pm2 reload engishield-api --update-env
+            pm2 restart engishield-api --update-env || pm2 start server.js --name engishield-api
             pm2 save
 
-            echo "Deploy completed at $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+            echo "Deploy concluido em $(date -u '+%Y-%m-%d %H:%M:%S UTC')"

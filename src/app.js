@@ -1,5 +1,6 @@
 'use strict';
 
+const path = require('path');
 const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
@@ -13,12 +14,16 @@ const logger = require('./config/logger');
 
 const app = express();
 
+const FRONTEND_OUT = path.join(__dirname, '..', 'frontend', 'out');
+
 // Security headers
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc:  ["'self'"],
+      scriptSrc:  ["'self'", "'unsafe-inline'"],
+      styleSrc:   ["'self'", "'unsafe-inline'"],
+      imgSrc:     ["'self'", 'data:'],
       objectSrc:  ["'none'"],
       upgradeInsecureRequests: [],
     },
@@ -65,9 +70,15 @@ app.get('/health', (_req, res) => {
 // API routes
 app.use(process.env.API_PREFIX || '/api/v1', router);
 
-// 404 handler
-app.use((_req, res) => {
-  res.status(404).json({ code: 'RESOURCE_NOT_FOUND', message: 'The requested resource does not exist.' });
+// Frontend static files (Next.js export)
+app.use(express.static(FRONTEND_OUT));
+
+// SPA fallback — serve index.html for any non-API route
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api/') || req.path === '/health') return next();
+  res.sendFile(path.join(FRONTEND_OUT, 'index.html'), (err) => {
+    if (err) res.status(404).json({ code: 'RESOURCE_NOT_FOUND', message: 'The requested resource does not exist.' });
+  });
 });
 
 // Global error handler
